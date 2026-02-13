@@ -13,7 +13,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn, formatPrice, getConnectorLabel, formatDuration } from "@/lib/utils";
-import { PortAvailability } from "@/components/station/PortAvailability";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import type { IStation } from "@/types";
@@ -313,13 +312,87 @@ export default function BookingPage({
             </h3>
 
             {station.chargingPorts && station.chargingPorts.length > 0 ? (
-              <div className="mt-4">
-                <PortAvailability
-                  ports={station.chargingPorts}
-                  selectable
-                  selectedPortId={selectedPortId}
-                  onSelectPort={setSelectedPortId}
-                />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {station.chargingPorts.map((port) => {
+                  const portId = String(port._id || port.portNumber);
+                  const isAvailable = port.status === "available";
+                  const isSelected = selectedPortId === portId;
+
+                  return (
+                    <div
+                      key={portId}
+                      role="button"
+                      tabIndex={isAvailable ? 0 : -1}
+                      onClick={() => {
+                        if (isAvailable) {
+                          setSelectedPortId(portId);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if ((e.key === "Enter" || e.key === " ") && isAvailable) {
+                          e.preventDefault();
+                          setSelectedPortId(portId);
+                        }
+                      }}
+                      className={cn(
+                        "rounded-lg border p-4 text-left transition-all",
+                        isAvailable
+                          ? "cursor-pointer hover:border-primary/50 hover:shadow-md"
+                          : "cursor-not-allowed opacity-50",
+                        isSelected
+                          ? "border-primary bg-primary/10 ring-2 ring-primary"
+                          : "border-border bg-card"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={cn(
+                              "flex h-8 w-8 items-center justify-center rounded-lg",
+                              isAvailable ? "bg-green-100" : "bg-gray-100"
+                            )}
+                          >
+                            <Zap
+                              className={cn(
+                                "h-4 w-4",
+                                isAvailable ? "text-green-600" : "text-gray-500"
+                              )}
+                            />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-card-foreground">
+                              Port {port.portNumber}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {getConnectorLabel(port.connectorType)}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant={isAvailable ? "success" : "default"}>
+                          {isAvailable ? "Available" : port.status}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+                        {port.powerOutput && (
+                          <span className="flex items-center gap-1">
+                            <Zap className="h-3 w-3" />
+                            {port.powerOutput}
+                          </span>
+                        )}
+                        {port.chargerType && (
+                          <span className="rounded bg-muted px-1.5 py-0.5 font-medium">
+                            {port.chargerType}
+                          </span>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <div className="mt-2 text-xs font-medium text-primary">
+                          ✓ Selected
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="mt-4 text-sm text-muted-foreground">
