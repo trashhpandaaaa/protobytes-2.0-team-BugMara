@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import dbConnect from "@/lib/db";
 import { loadStationFromFile } from "@/lib/stations";
+import { calculateETA, getStationCoordinates } from "@/lib/eta";
 import Booking from "@/lib/models/Booking";
 import Station from "@/lib/models/Station";
 import User from "@/lib/models/User";
@@ -85,6 +86,7 @@ export async function POST(req: Request) {
       portId,
       startTime,
       estimatedDuration,
+      userLocation,
     } = body;
 
     if (!stationId || !portId || !startTime || !estimatedDuration) {
@@ -134,7 +136,7 @@ export async function POST(req: Request) {
       }
 
       const port = station.chargingPorts.find(
-        (p) => p._id?.toString() === portId
+        (p) => p._id?.toString() === portId || p.portNumber === portId
       );
       if (!port) {
         return NextResponse.json(
@@ -164,6 +166,20 @@ export async function POST(req: Request) {
       );
     }
 
+    // Calculate ETA if user shared their location
+    let etaData = undefined;
+    let userLocationData = undefined;
+    if (userLocation && userLocation.lat && userLocation.lng) {
+      userLocationData = { lat: userLocation.lat, lng: userLocation.lng };
+      const stationCoords = await getStationCoordinates(stationId);
+      if (stationCoords) {
+        const eta = await calculateETA(userLocationData, stationCoords);
+        if (eta) {
+          etaData = eta;
+        }
+      }
+    }
+
     const booking = await Booking.create({
       userId,
       userName: user.name,
@@ -178,6 +194,8 @@ export async function POST(req: Request) {
         amount: depositAmount,
         refunded: false,
       },
+      ...(userLocationData && { userLocation: userLocationData }),
+      ...(etaData && { eta: etaData }),
     });
 
     const qrData = JSON.stringify({
@@ -194,7 +212,8 @@ export async function POST(req: Request) {
 
     // Update port status only for DB-based stations
     if (!isFileBased) {
-      await Station.updateOne(
+      // Try matching by _id first, then fall back to portNumber
+      const updateResult = await Station.updateOne(
         { _id: stationId, "chargingPorts._id": portId },
         {
           $set: {
@@ -203,6 +222,17 @@ export async function POST(req: Request) {
           },
         }
       );
+      if (updateResult.modifiedCount === 0) {
+        await Station.updateOne(
+          { _id: stationId, "chargingPorts.portNumber": portId },
+          {
+            $set: {
+              "chargingPorts.$.status": "reserved",
+              "chargingPorts.$.currentBookingId": booking._id,
+            },
+          }
+        );
+      }
     }
 
     const result = await Booking.findById(booking._id).lean();

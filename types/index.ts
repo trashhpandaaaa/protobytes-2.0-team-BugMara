@@ -67,6 +67,15 @@ export interface IBooking {
     refunded: boolean;
   };
   qrCode?: string;
+  userLocation?: {
+    lat: number;
+    lng: number;
+  };
+  eta?: {
+    durationMinutes: number;
+    distanceKm: number;
+    updatedAt: string;
+  };
   createdAt: string;
   updatedAt: string;
 }

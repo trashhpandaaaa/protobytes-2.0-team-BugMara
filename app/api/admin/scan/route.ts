@@ -9,7 +9,8 @@ import { loadStationFromFile } from "@/lib/stations";
 async function verifyAdmin(userId: string) {
   await dbConnect();
   const user = await User.findOne({ clerkId: userId });
-  return user && (user.role === "admin" || user.role === "superadmin");
+  if (!user || (user.role !== "admin" && user.role !== "superadmin")) return null;
+  return user;
 }
 
 export async function POST(req: Request) {
@@ -19,7 +20,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!(await verifyAdmin(userId))) {
+    const user = await verifyAdmin(userId);
+    if (!user) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -75,8 +77,18 @@ export async function POST(req: Request) {
       stationData = loadStationFromFile(sid);
     } else {
       stationData = await Station.findById(booking.stationId)
-        .select("name location chargingPorts pricing")
+        .select("name location chargingPorts pricing adminId")
         .lean();
+    }
+
+    // Station admins can only scan bookings for their own stations
+    if (user.role === "admin" && !sid.startsWith("station-")) {
+      if (!stationData || (stationData as Record<string, unknown>).adminId !== userId) {
+        return NextResponse.json(
+          { error: "You can only scan bookings for your own stations" },
+          { status: 403 }
+        );
+      }
     }
 
     // If action = "verify", just return booking info for admin review

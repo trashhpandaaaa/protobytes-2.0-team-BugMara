@@ -56,16 +56,24 @@ export default function AdminDashboardPage() {
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [role, setRole] = useState<string>("admin");
 
   useEffect(() => {
-    async function fetchAnalytics() {
+    async function fetchData() {
       try {
-        const res = await fetch("/api/admin/analytics");
-        if (res.ok) {
-          const data = await res.json();
+        const [analyticsRes, roleRes] = await Promise.all([
+          fetch("/api/admin/analytics"),
+          fetch("/api/users/role"),
+        ]);
+        if (analyticsRes.ok) {
+          const data = await analyticsRes.json();
           setAnalytics(data);
-        } else if (res.status === 403) {
+        } else if (analyticsRes.status === 403) {
           setError("Access denied");
+        }
+        if (roleRes.ok) {
+          const roleData = await roleRes.json();
+          setRole(roleData.role || "admin");
         }
       } catch (err) {
         console.error("Failed to fetch analytics:", err);
@@ -74,7 +82,7 @@ export default function AdminDashboardPage() {
         setLoading(false);
       }
     }
-    fetchAnalytics();
+    fetchData();
   }, []);
 
   if (loading) {
@@ -106,7 +114,7 @@ export default function AdminDashboardPage() {
 
   const stats = [
     {
-      label: "Total Stations",
+      label: role === "superadmin" ? "All Stations" : "My Stations",
       value: analytics?.overview?.totalStations ?? 0,
       icon: MapPin,
       color: "text-blue-400",
@@ -114,7 +122,7 @@ export default function AdminDashboardPage() {
       cardClass: "stat-card stat-card-blue",
     },
     {
-      label: "Total Bookings",
+      label: role === "superadmin" ? "Total Bookings" : "My Bookings",
       value: totalBookings,
       icon: Calendar,
       color: "text-emerald-400",
@@ -155,13 +163,15 @@ export default function AdminDashboardPage() {
           <div>
             <div className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
               <Shield className="h-3 w-3" />
-              Admin Panel
+              {role === "superadmin" ? "Super Admin" : "Station Admin"}
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground">
               Dashboard Overview
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Monitor your charging network performance
+              {role === "superadmin"
+                ? "Monitor your entire charging network"
+                : "Monitor your station performance"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -404,6 +414,20 @@ export default function AdminDashboardPage() {
                   </span>
                   <ArrowRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
                 </Link>
+                {role === "superadmin" && (
+                  <Link
+                    href="/admin/users"
+                    className="flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10">
+                      <Users className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <span className="text-xs font-medium text-foreground">
+                      Manage Users
+                    </span>
+                    <ArrowRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+                  </Link>
+                )}
               </div>
             </div>
           </div>

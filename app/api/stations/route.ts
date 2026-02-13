@@ -87,38 +87,39 @@ export async function GET(req: Request) {
     const search = searchParams.get("search");
     const vehicleType = searchParams.get("vehicleType");
 
-    let stations;
+    // Always load stations from JSON file
+    let fileStations = loadAndFilterStations(city, search, vehicleType);
 
+    // Also try to load DB stations and merge them in
+    let dbStations: any[] = [];
     try {
       await dbConnect();
-      const count = await Station.countDocuments();
+      const filter: Record<string, unknown> = { isActive: true };
 
-      if (count > 0) {
-        const filter: Record<string, unknown> = { isActive: true };
-
-        if (city) {
-          filter["location.city"] = { $regex: escapeRegex(city), $options: "i" };
-        }
-        if (search) {
-          const safeSearch = escapeRegex(search);
-          filter.$or = [
-            { name: { $regex: safeSearch, $options: "i" } },
-            { "location.address": { $regex: safeSearch, $options: "i" } },
-            { "location.city": { $regex: safeSearch, $options: "i" } },
-          ];
-        }
-        if (vehicleType) {
-          filter.vehicleTypes = vehicleType;
-        }
-
-        stations = await Station.find(filter).sort({ createdAt: -1 }).lean();
-      } else {
-        stations = loadAndFilterStations(city, search, vehicleType);
+      if (city) {
+        filter["location.city"] = { $regex: escapeRegex(city), $options: "i" };
       }
+      if (search) {
+        const safeSearch = escapeRegex(search);
+        filter.$or = [
+          { name: { $regex: safeSearch, $options: "i" } },
+          { "location.address": { $regex: safeSearch, $options: "i" } },
+          { "location.city": { $regex: safeSearch, $options: "i" } },
+        ];
+      }
+      if (vehicleType) {
+        filter.vehicleTypes = vehicleType;
+      }
+
+      dbStations = await Station.find(filter).sort({ createdAt: -1 }).lean();
     } catch {
-      // DB connection failed, fall back to file
-      stations = loadAndFilterStations(city, search, vehicleType);
+      // DB connection failed, just use file stations
     }
+
+    // Merge: DB stations take priority over file stations with the same name
+    const dbNames = new Set(dbStations.map((s) => s.name));
+    const dedupedFileStations = fileStations.filter((s) => !dbNames.has(s.name));
+    const stations = [...dbStations, ...dedupedFileStations];
 
     return NextResponse.json({ stations }, { status: 200 });
   } catch (error) {

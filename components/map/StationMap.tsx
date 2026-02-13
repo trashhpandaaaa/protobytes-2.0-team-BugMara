@@ -278,7 +278,7 @@ export function StationMap({
     let disposed = false;
 
     // ── Station GLB ──
-    const STATION_SCALE = 80;
+    const STATION_SCALE = 5;
     loader.load("/models/electric_charging_station.glb", (gltf) => {
       if (disposed) return;
       const template = gltf.scene;
@@ -299,7 +299,7 @@ export function StationMap({
     }, undefined, (err) => console.error("[StationMap] Station GLB error:", err));
 
     // ── Car GLB (always load, show when userLocation exists) ──
-    const CAR_SCALE = 250;
+    const CAR_SCALE = 300;
     loader.load("/models/car_mg4.glb", (gltf) => {
       if (disposed) return;
       const car = gltf.scene;
@@ -352,10 +352,14 @@ export function StationMap({
             m.position.z = Math.sin(t * 0.5 + i * 1.8) * 2 * zoomFactor;
           }
           if (m.userData?.type === "car") {
-            m.position.z = Math.sin(t * 0.8) * 1.5 * zoomFactor;
-            // Apply heading rotation around local Z (yaw) after base X rotation
-            const headingRad = ((m.userData?.heading ?? 0) * Math.PI) / 180;
-            m.rotation.set(Math.PI / 2, 0, -headingRad);
+            m.position.z = 0;
+            // Only apply heading rotation when in navigation mode
+            if (navigationMode) {
+              const headingRad = ((m.userData?.heading ?? 0) * Math.PI) / 180;
+              m.rotation.set(Math.PI / 2, 0, -headingRad);
+            } else {
+              m.rotation.set(Math.PI / 2, 0, 0);
+            }
           }
         });
 

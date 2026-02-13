@@ -6,6 +6,7 @@ import User from "@/lib/models/User";
 import Booking from "@/lib/models/Booking";
 import { khaltiInitiate } from "@/lib/khalti";
 import { loadStationFromFile } from "@/lib/stations";
+import { calculateETA, getStationCoordinates } from "@/lib/eta";
 import QRCode from "qrcode";
 
 export async function POST(req: Request) {
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { stationId, portId, startTime, estimatedDuration } = body;
+    const { stationId, portId, startTime, estimatedDuration, userLocation } = body;
 
     if (!stationId || !portId || !startTime || !estimatedDuration) {
       return NextResponse.json(

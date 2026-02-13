@@ -108,6 +108,14 @@ export default function HomePage() {
     });
   }, [stations, searchQuery, filterTab]);
 
+  // When a route is active, only show stations on the route
+  const displayStations = useMemo(() => {
+    if (routeStationIds.size > 0) {
+      return filteredStations.filter((s) => routeStationIds.has(s._id));
+    }
+    return filteredStations;
+  }, [filteredStations, routeStationIds]);
+
   const availableCount = useMemo(
     () =>
       stations.filter((s) =>
@@ -193,7 +201,7 @@ export default function HomePage() {
           <div>
             <h1 className="text-lg font-bold text-foreground">Stations</h1>
             <p className="text-xs text-muted-foreground">
-              {filteredStations.length} stations found
+              {displayStations.length} stations found
             </p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -269,7 +277,7 @@ export default function HomePage() {
         <div>
           {!loading && (
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-1 mb-2">
-              {routeStationIds.size > 0 ? "All Stations" : "Station List"}
+              {routeStationIds.size > 0 ? `Stations on Route (${displayStations.length})` : "Station List"}
             </p>
           )}
           {loading ? (
@@ -308,7 +316,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredStations.map((station) => (
+              {displayStations.map((station) => (
                 <StationListCard
                   key={station._id}
                   station={station}
@@ -333,7 +341,7 @@ export default function HomePage() {
       <div className="flex-1 relative min-h-0">
         {viewMode === "map" ? (
           <StationMap
-            stations={filteredStations}
+            stations={displayStations}
             className="h-full w-full"
             routeData={routeData}
             highlightedStationIds={routeStationIds}
@@ -346,7 +354,7 @@ export default function HomePage() {
         ) : (
           <div className="h-full overflow-y-auto p-4 lg:p-6">
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredStations.map((station) => (
+              {displayStations.map((station) => (
                 <div key={station._id} className="card-hover animate-fade-in-up">
                   <StationCard station={station} />
                 </div>
@@ -389,7 +397,7 @@ export default function HomePage() {
                 className="flex flex-1 items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-xs font-medium text-primary"
               >
                 <MapPin className="h-3.5 w-3.5" />
-                {filteredStations.length} Stations
+                {displayStations.length} Stations
               </button>
               <button
                 onClick={() => setViewMode(viewMode === "map" ? "list" : "map")}

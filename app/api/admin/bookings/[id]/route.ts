@@ -8,7 +8,8 @@ import User from "@/lib/models/User";
 async function verifyAdmin(userId: string) {
   await dbConnect();
   const user = await User.findOne({ clerkId: userId });
-  return user && (user.role === "admin" || user.role === "superadmin");
+  if (!user || (user.role !== "admin" && user.role !== "superadmin")) return null;
+  return user;
 }
 
 export async function PATCH(
@@ -21,7 +22,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!(await verifyAdmin(userId))) {
+    const user = await verifyAdmin(userId);
+    if (!user) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -35,6 +37,20 @@ export async function PATCH(
         { error: "Booking not found" },
         { status: 404 }
       );
+    }
+
+    // Station admins can only manage bookings for their own stations
+    if (user.role === "admin") {
+      const sid = String(booking.stationId);
+      if (!sid.startsWith("station-")) {
+        const station = await Station.findById(booking.stationId).select("adminId").lean();
+        if (!station || station.adminId !== userId) {
+          return NextResponse.json(
+            { error: "You can only manage bookings for your own stations" },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     const validTransitions: Record<string, string[]> = {

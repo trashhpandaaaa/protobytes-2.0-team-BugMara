@@ -17,6 +17,15 @@ export interface IBookingDocument extends Document {
     refunded: boolean;
   };
   qrCode?: string;
+  userLocation?: {
+    lat: number;
+    lng: number;
+  };
+  eta?: {
+    durationMinutes: number;
+    distanceKm: number;
+    updatedAt: Date;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +57,15 @@ const BookingSchema = new Schema<IBookingDocument>(
       refunded: { type: Boolean, default: false },
     },
     qrCode: { type: String },
+    userLocation: {
+      lat: { type: Number },
+      lng: { type: Number },
+    },
+    eta: {
+      durationMinutes: { type: Number },
+      distanceKm: { type: Number },
+      updatedAt: { type: Date },
+    },
   },
   { timestamps: true }
 );

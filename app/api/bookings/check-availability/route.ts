@@ -52,8 +52,8 @@ export async function POST(req: Request) {
     }
 
     const port = station.chargingPorts.find(
-      (p: { _id?: unknown; status: string }) =>
-        String(p._id) === portId
+      (p: { _id?: unknown; portNumber?: string; status: string }) =>
+        String(p._id) === portId || p.portNumber === portId
     );
     if (!port) {
       return NextResponse.json({ error: "Port not found" }, { status: 404 });

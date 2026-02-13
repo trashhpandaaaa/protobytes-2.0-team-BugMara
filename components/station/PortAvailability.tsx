@@ -50,26 +50,34 @@ export function PortAvailability({
     <div className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-3", className)}>
       {ports.map((port) => {
         const config = statusConfig[port.status] || statusConfig.maintenance;
-        const isSelected = selectedPortId === port._id;
-        const isClickable = selectable && port.status === "available";
+        const portId = String(port._id || port.portNumber);
+        const isSelected = selectedPortId === portId;
+        const isAvailable = port.status === "available";
+        const isClickable = selectable && isAvailable;
 
         return (
-          <button
-            key={port._id || port.portNumber}
-            type="button"
-            disabled={!isClickable}
+          <div
+            key={portId}
+            role="button"
+            tabIndex={isClickable ? 0 : -1}
             onClick={() => {
-              if (isClickable && port._id) {
-                onSelectPort?.(port._id);
+              if (isClickable && onSelectPort) {
+                onSelectPort(portId);
+              }
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === " ") && isClickable && onSelectPort) {
+                e.preventDefault();
+                onSelectPort(portId);
               }
             }}
             className={cn(
-              "rounded-lg border p-4 text-left transition-all",
+              "rounded-lg border p-4 text-left transition-all select-none",
               isClickable
-                ? "cursor-pointer hover:border-primary/50 hover:shadow-sm"
-                : "cursor-default",
+                ? "cursor-pointer hover:border-primary/50 hover:shadow-md active:scale-[0.98]"
+                : "cursor-not-allowed",
               isSelected
-                ? "border-primary bg-primary/5 ring-1 ring-primary"
+                ? "border-primary bg-primary/10 ring-2 ring-primary shadow-lg shadow-primary/10"
                 : "border-border bg-card",
               !isClickable && selectable && "opacity-50"
             )}
@@ -126,7 +134,7 @@ export function PortAvailability({
                 </span>
               )}
             </div>
-          </button>
+          </div>
         );
       })}
     </div>

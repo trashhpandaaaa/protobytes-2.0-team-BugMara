@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import dbConnect from "@/lib/db";
 import Station from "@/lib/models/Station";
 import User from "@/lib/models/User";
+import { loadAllStationsFromFile } from "@/lib/stations";
 
 async function verifyAdmin(userId: string) {
   await dbConnect();
@@ -25,7 +26,15 @@ export async function GET() {
 
     // Station admins only see their own stations; superadmins see all
     const filter = user.role === "admin" ? { adminId: userId } : {};
-    const stations = await Station.find(filter).sort({ createdAt: -1 }).lean();
+    const dbStations = await Station.find(filter).sort({ createdAt: -1 }).lean();
+
+    // For demo: also include all stations from stations.json so the admin panel
+    // has a full station list to work with
+    const fileStations = loadAllStationsFromFile();
+    const dbIds = new Set(dbStations.map((s) => String(s.name)));
+    const extraFileStations = fileStations.filter((s) => !dbIds.has(s.name));
+
+    const stations = [...dbStations, ...extraFileStations];
 
     return NextResponse.json({ stations }, { status: 200 });
   } catch (error) {
