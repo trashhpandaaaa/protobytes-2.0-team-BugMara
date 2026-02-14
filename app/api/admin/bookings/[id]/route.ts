@@ -47,8 +47,8 @@ export async function PATCH(
     }
 
     const validTransitions: Record<string, string[]> = {
-      pending: ["confirmed", "cancelled"],
-      confirmed: ["active", "cancelled", "no-show"],
+      pending: ["confirmed", "active", "completed", "cancelled"],
+      confirmed: ["active", "completed", "cancelled", "no-show"],
       active: ["completed"],
       completed: [],
       cancelled: [],

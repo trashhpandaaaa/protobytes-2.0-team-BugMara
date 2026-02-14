@@ -125,6 +125,7 @@ export async function GET(req: Request) {
               $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "UTC" },
             },
             count: { $sum: 1 },
+            revenue: { $sum: { $ifNull: ["$amountPaid", 0] } },
           },
         },
         { $sort: { _id: 1 } },

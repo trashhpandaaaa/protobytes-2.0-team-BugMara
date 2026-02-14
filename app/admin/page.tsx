@@ -147,11 +147,25 @@ export default function AdminDashboardPage() {
     },
   ];
 
-  const chartData = (analytics?.dailyBookings ?? []).map((d) => ({
-    date: d._id,
-    revenue: d.revenue,
-    bookings: d.count,
-  }));
+  // Build a continuous 30-day timeline, filling missing days with 0
+  const chartData = (() => {
+    const raw = analytics?.dailyBookings ?? [];
+    const map = new Map(raw.map((d) => [d._id, d]));
+    const days: { date: string; revenue: number; bookings: number }[] = [];
+    const now = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const entry = map.get(key);
+      days.push({
+        date: key.slice(5), // "MM-DD" for shorter labels
+        revenue: entry?.revenue ?? 0,
+        bookings: entry?.count ?? 0,
+      });
+    }
+    return days;
+  })();
 
   const topStations = analytics?.topStations ?? [];
 

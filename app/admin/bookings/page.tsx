@@ -362,8 +362,23 @@ export default function AdminBookingsPage() {
                               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                             ) : (
                               <>
+                                {booking.status === "pending" && (
+                                  <button
+                                    onClick={() =>
+                                      updateBookingStatus(
+                                        booking._id,
+                                        "confirmed"
+                                      )
+                                    }
+                                    className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-500/10"
+                                    title="Confirm Booking"
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </button>
+                                )}
                                 {(booking.status === "active" ||
-                                  booking.status === "confirmed") && (
+                                  booking.status === "confirmed" ||
+                                  booking.status === "pending") && (
                                   <button
                                     onClick={() =>
                                       updateBookingStatus(
