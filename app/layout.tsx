@@ -12,6 +12,9 @@ export const metadata: Metadata = {
     "Find, book, and charge your electric vehicle at stations across Nepal",
   keywords: ["EV charging", "electric vehicle", "Nepal", "booking", "Urja Station"],
   authors: [{ name: "Team BugMara" }],
+  icons: {
+    icon: "/favicon/favicon.",
+  },
 };
 
 export default function RootLayout({
