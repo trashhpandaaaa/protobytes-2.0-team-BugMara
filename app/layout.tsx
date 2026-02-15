@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   keywords: ["EV charging", "electric vehicle", "Nepal", "booking", "Urja Station"],
   authors: [{ name: "Team BugMara" }],
   icons: {
-    icon: "/favicon/favicon.",
+    icon: "/favicon/favicon.png",
   },
 };
 
