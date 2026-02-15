@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -15,14 +15,30 @@ import {
   ChevronRight,
   Filter,
   SlidersHorizontal,
+  Car,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { StationCard } from "@/components/station/StationCard";
-import { StationMap } from "@/components/map/StationMap";
-import { NearbyStations } from "@/components/station/NearbyStations";
-import { RoutePlanner, type RouteData } from "@/components/station/RoutePlanner";
 import { Spinner } from "@/components/ui/Spinner";
 import type { IStation } from "@/types";
+
+// ── Dynamic imports for heavy components (code-split) ──
+const StationCard = dynamic(
+  () => import("@/components/station/StationCard").then((m) => ({ default: m.StationCard })),
+  { ssr: false }
+);
+const StationMap = dynamic(
+  () => import("@/components/map/StationMap").then((m) => ({ default: m.StationMap })),
+  { ssr: false, loading: () => <div className="flex h-full items-center justify-center"><Spinner size="lg" /></div> }
+);
+const NearbyStations = dynamic(
+  () => import("@/components/station/NearbyStations").then((m) => ({ default: m.NearbyStations })),
+  { ssr: false }
+);
+const RoutePlanner = dynamic(
+  () => import("@/components/station/RoutePlanner").then((m) => ({ default: m.RoutePlanner })),
+  { ssr: false }
+);
+import type { RouteData } from "@/components/station/RoutePlanner";
 
 type ViewMode = "map" | "list";
 type FilterTab = "all" | "available" | "fast";
@@ -43,6 +59,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("map");
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
   const [routeData, setRouteData] = useState<RouteData | null>(null);
@@ -51,10 +68,17 @@ export default function HomePage() {
   const [userHeading, setUserHeading] = useState<number | null>(null);
   const [userSpeed, setUserSpeed] = useState<number | null>(null);
   const [navigationMode, setNavigationMode] = useState(false);
+  const [etaMap, setEtaMap] = useState<Record<string, { durationMinutes: number; distanceKm: number }>>({});
 
   // For computing heading from position changes
   const prevLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
+
+  // ── Debounce search input (300ms) ──
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
 
   useEffect(() => {
     async function fetchStations() {
@@ -78,8 +102,8 @@ export default function HomePage() {
 
   const filteredStations = useMemo(() => {
     return stations.filter((station) => {
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
+      if (debouncedSearch) {
+        const query = debouncedSearch.toLowerCase();
         const matchesName = station.name.toLowerCase().includes(query);
         const matchesCity = station.location?.city
           ?.toLowerCase()
@@ -106,7 +130,7 @@ export default function HomePage() {
 
       return true;
     });
-  }, [stations, searchQuery, filterTab]);
+  }, [stations, debouncedSearch, filterTab]);
 
   // When a route is active, only show stations on the route
   const displayStations = useMemo(() => {
@@ -115,6 +139,59 @@ export default function HomePage() {
     }
     return filteredStations;
   }, [filteredStations, routeStationIds]);
+
+  // Fetch driving ETAs when user location is known
+  // Stabilise dependency: only re-fetch when station IDs change, not the array ref
+  const displayStationIds = useMemo(
+    () => displayStations.map((s) => s._id).join(","),
+    [displayStations]
+  );
+
+  useEffect(() => {
+    if (!userLocation || displayStations.length === 0) return;
+
+    // Only fetch for first 10 stations to avoid API overload
+    const stationsToFetch = displayStations
+      .filter((s) => s.location?.coordinates?.lat && s.location?.coordinates?.lng)
+      .slice(0, 10);
+
+    if (stationsToFetch.length === 0) return;
+
+    let cancelled = false;
+    // Debounce ETA fetches with a small delay
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/stations/eta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userLat: userLocation.lat,
+            userLng: userLocation.lng,
+            stations: stationsToFetch.map((s) => ({
+              id: s._id,
+              lat: s.location.coordinates.lat,
+              lng: s.location.coordinates.lng,
+            })),
+          }),
+        });
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          const map: Record<string, { durationMinutes: number; distanceKm: number }> = {};
+          for (const eta of data.etas) {
+            if (!eta.error) {
+              map[eta.id] = { durationMinutes: eta.durationMinutes, distanceKm: eta.distanceKm };
+            }
+          }
+          setEtaMap(map);
+        }
+      } catch (err) {
+        console.error("Failed to fetch ETAs for stations:", err);
+      }
+    }, 500);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation?.lat, userLocation?.lng, displayStationIds]);
 
   const availableCount = useMemo(
     () =>
@@ -321,6 +398,8 @@ export default function HomePage() {
                   key={station._id}
                   station={station}
                   highlighted={routeStationIds.has(station._id)}
+                  etaMinutes={etaMap[station._id]?.durationMinutes}
+                  etaDistanceKm={etaMap[station._id]?.distanceKm}
                 />
               ))}
             </div>
@@ -356,7 +435,11 @@ export default function HomePage() {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
               {displayStations.map((station) => (
                 <div key={station._id} className="card-hover animate-fade-in-up">
-                  <StationCard station={station} />
+                  <StationCard
+                    station={station}
+                    etaMinutes={etaMap[station._id]?.durationMinutes ?? null}
+                    etaDistanceKm={etaMap[station._id]?.distanceKm ?? null}
+                  />
                 </div>
               ))}
             </div>
@@ -451,8 +534,18 @@ export default function HomePage() {
   );
 }
 
-/* ────────── Compact Station Card for Sidebar ────────── */
-function StationListCard({ station, highlighted }: { station: IStation; highlighted?: boolean }) {
+/* ────────── Compact Station Card for Sidebar (memoized) ────────── */
+const StationListCard = memo(function StationListCard({
+  station,
+  highlighted,
+  etaMinutes,
+  etaDistanceKm,
+}: {
+  station: IStation;
+  highlighted?: boolean;
+  etaMinutes?: number;
+  etaDistanceKm?: number;
+}) {
   const availablePorts =
     station.chargingPorts?.filter((p) => p.status === "available").length ?? 0;
   const totalPorts = station.chargingPorts?.length ?? 0;
@@ -496,6 +589,18 @@ function StationListCard({ station, highlighted }: { station: IStation; highligh
           </span>
         </div>
         <div className="mt-1.5 flex items-center gap-3">
+          {etaMinutes != null && (
+            <span className="flex items-center gap-1 text-xs text-blue-400 font-medium">
+              <Car className="h-3 w-3" />
+              {etaMinutes < 60 ? `${etaMinutes} min` : `${Math.floor(etaMinutes / 60)}h ${etaMinutes % 60}m`}
+            </span>
+          )}
+          {etaDistanceKm != null && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <MapPin className="h-3 w-3" />
+              {etaDistanceKm} km
+            </span>
+          )}
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Battery className="h-3 w-3" />
             {maxPower}kW
@@ -520,4 +625,4 @@ function StationListCard({ station, highlighted }: { station: IStation; highligh
       <ChevronRight className="h-4 w-4 shrink-0 self-center text-muted-foreground/50 group-hover:text-primary transition-colors" />
     </Link>
   );
-}
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   Navigation,
@@ -11,9 +11,17 @@ import {
   ChevronRight,
   Locate,
   AlertCircle,
+  Clock,
+  Car,
 } from "lucide-react";
 import { cn, haversineDistance } from "@/lib/utils";
 import type { IStation } from "@/types";
+
+interface ETAData {
+  id: string;
+  durationMinutes: number;
+  distanceKm: number;
+}
 
 interface NearbyStationsProps {
   stations: IStation[];
@@ -28,6 +36,8 @@ export function NearbyStations({ stations, onLocate }: NearbyStationsProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [located, setLocated] = useState(false);
+  const [etaMap, setEtaMap] = useState<Record<string, ETAData>>({});
+  const [etaLoading, setEtaLoading] = useState(false);
 
   const requestLocation = () => {
     if (!navigator.geolocation) {
@@ -80,6 +90,49 @@ export function NearbyStations({ stations, onLocate }: NearbyStationsProps) {
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 5);
   }, [stations, userLocation]);
+
+  // Fetch driving ETA for nearest stations
+  const fetchETAs = useCallback(async () => {
+    if (!userLocation || nearestStations.length === 0) return;
+
+    setEtaLoading(true);
+    try {
+      const res = await fetch("/api/stations/eta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userLat: userLocation.lat,
+          userLng: userLocation.lng,
+          stations: nearestStations.map((s) => ({
+            id: s._id,
+            lat: s.location.coordinates.lat,
+            lng: s.location.coordinates.lng,
+          })),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const map: Record<string, ETAData> = {};
+        for (const eta of data.etas) {
+          if (!eta.error) {
+            map[eta.id] = eta;
+          }
+        }
+        setEtaMap(map);
+      }
+    } catch (err) {
+      console.error("Failed to fetch ETAs:", err);
+    } finally {
+      setEtaLoading(false);
+    }
+  }, [userLocation, nearestStations]);
+
+  useEffect(() => {
+    if (located && nearestStations.length > 0) {
+      fetchETAs();
+    }
+  }, [located, nearestStations.length, fetchETAs]);
 
   if (!located) {
     return (
@@ -156,6 +209,7 @@ export function NearbyStations({ stations, onLocate }: NearbyStationsProps) {
             ...(station.chargingPorts?.map((p) => Number(p.powerOutput) || 0) ??
               [0])
           );
+          const eta = etaMap[station._id];
 
           return (
             <Link
@@ -174,11 +228,28 @@ export function NearbyStations({ stations, onLocate }: NearbyStationsProps) {
                   {station.name}
                 </h4>
                 <div className="mt-0.5 flex items-center gap-3 text-[11px] text-muted-foreground">
+                  {/* Driving ETA */}
+                  {eta ? (
+                    <span className="flex items-center gap-1 text-blue-400 font-medium">
+                      <Car className="h-3 w-3" />
+                      {eta.durationMinutes < 60
+                        ? `${eta.durationMinutes} min`
+                        : `${Math.floor(eta.durationMinutes / 60)}h ${eta.durationMinutes % 60}m`}
+                    </span>
+                  ) : etaLoading ? (
+                    <span className="flex items-center gap-1 text-blue-400/60">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span className="text-[10px]">ETA...</span>
+                    </span>
+                  ) : null}
+                  {/* Driving distance (from ETA) or haversine fallback */}
                   <span className="flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
-                    {station.distance < 1
-                      ? `${Math.round(station.distance * 1000)}m`
-                      : `${station.distance.toFixed(1)}km`}
+                    {eta
+                      ? `${eta.distanceKm} km`
+                      : station.distance < 1
+                        ? `${Math.round(station.distance * 1000)}m`
+                        : `${station.distance.toFixed(1)}km`}
                   </span>
                   <span className="flex items-center gap-1">
                     <Battery className="h-3 w-3" />

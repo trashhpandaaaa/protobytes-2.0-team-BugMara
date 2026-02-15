@@ -37,5 +37,5 @@ next-env.d.ts
 # clerk configuration 
 /.clerk/
 
-# temp files
+# temp files\n.port-status.json
 tmpclaude-*

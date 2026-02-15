@@ -1,7 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Sidebar } from "@/components/layout/Sidebar";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#141e30",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -25,9 +31,6 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-        </head>
         <body className="min-h-screen bg-background antialiased">
           <div className="flex h-screen overflow-hidden">
             <Sidebar />

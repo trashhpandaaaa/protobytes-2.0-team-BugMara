@@ -12,6 +12,7 @@ import {
   Star,
   AlertCircle,
   Zap,
+  Crosshair,
 } from "lucide-react";
 import Link from "next/link";
 import { cn, pointToRouteDistance } from "@/lib/utils";
@@ -73,6 +74,7 @@ export function RoutePlanner({
     (IStation & { routeDistance: number })[]
   >([]);
   const [error, setError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -151,6 +153,56 @@ export function RoutePlanner({
       setShowSugB(false);
     }
   };
+
+  const useMyLocation = useCallback(
+    async (field: "A" | "B") => {
+      if (!navigator.geolocation) {
+        setError("Geolocation is not supported by your browser");
+        return;
+      }
+      setLocating(true);
+      setError(null);
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { longitude, latitude } = position.coords;
+          const coords: [number, number] = [longitude, latitude];
+          // Reverse geocode for a readable name
+          let name = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+          if (token) {
+            try {
+              const res = await fetch(
+                `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${token}&limit=1&types=place,locality,neighborhood,address`
+              );
+              if (res.ok) {
+                const data = await res.json();
+                if (data.features?.[0]?.place_name) {
+                  name = data.features[0].place_name;
+                }
+              }
+            } catch { /* use coords as fallback */ }
+          }
+          if (field === "A") {
+            setPointA(name);
+            setCoordA(coords);
+          } else {
+            setPointB(name);
+            setCoordB(coords);
+          }
+          setLocating(false);
+        },
+        (err) => {
+          setError(
+            err.code === 1
+              ? "Location access denied. Please allow location in your browser."
+              : "Unable to get your location. Please try again."
+          );
+          setLocating(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    },
+    [token]
+  );
 
   const findRoute = async () => {
     if (!coordA || !coordB || !token) return;
@@ -297,6 +349,19 @@ export function RoutePlanner({
               onBlur={() => setTimeout(() => setShowSugA(false), 200)}
               className="flex-1 rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
             />
+            <button
+              type="button"
+              onClick={() => useMyLocation("A")}
+              disabled={locating}
+              title="Use my current location"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
+            >
+              {locating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Crosshair className="h-4 w-4" />
+              )}
+            </button>
           </div>
           {showSugA && suggestionsA.length > 0 && (
             <div className="absolute left-8 right-0 top-full z-50 mt-1 rounded-lg border border-border/50 bg-card shadow-xl">

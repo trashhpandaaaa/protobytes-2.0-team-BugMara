@@ -3,81 +3,11 @@ import { auth } from "@clerk/nextjs/server";
 import dbConnect from "@/lib/db";
 import Station from "@/lib/models/Station";
 import User from "@/lib/models/User";
-import fs from "fs";
-import path from "path";
+import { loadAllStationsFromFile } from "@/lib/stations";
 
 /** Escape special regex characters to prevent ReDoS */
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-interface RawStation {
-  name: string;
-  city: string;
-  province: string;
-  address: string;
-  telephone: string;
-  type: string[];
-  latitude: string;
-  longitude: string;
-  plugs?: Array<{ plug: string; power: string; type: string }>;
-  amenities?: string[];
-}
-
-function loadStationsFromFile() {
-  const filePath = path.join(process.cwd(), "data", "stations.json");
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const data: RawStation[] = JSON.parse(raw);
-
-  return data.map((s, index) => {
-    const ports = (s.plugs || []).map((plug, pIndex) => ({
-      _id: `file-${index}-${pIndex}`,
-      portNumber: `P${index + 1}-${pIndex + 1}`,
-      connectorType: plug.plug,
-      powerOutput: plug.power || "N/A",
-      chargerType: plug.type || "N/A",
-      status: "available" as const,
-    }));
-
-    if (ports.length === 0) {
-      ports.push({
-        _id: `file-${index}-0`,
-        portNumber: `P${index + 1}-1`,
-        connectorType: "type2",
-        powerOutput: "7.2Kw",
-        chargerType: "AC",
-        status: "available" as const,
-      });
-    }
-
-    const isComingSoon = s.name.includes("Coming Soon");
-
-    return {
-      _id: `station-${index}`,
-      name: s.name.replace(" (Coming Soon)", ""),
-      location: {
-        address: s.address,
-        coordinates: {
-          lat: parseFloat(s.latitude),
-          lng: parseFloat(s.longitude),
-        },
-        city: s.city,
-        province: s.province || "",
-      },
-      telephone: s.telephone || "",
-      vehicleTypes: s.type || ["car"],
-      operatingHours: { open: "06:00", close: "22:00" },
-      chargingPorts: ports,
-      pricing: { perHour: 150 },
-      amenities: s.amenities || [],
-      photos: [],
-      rating: 0,
-      totalReviews: 0,
-      isActive: !isComingSoon,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  });
 }
 
 export async function GET(req: Request) {
@@ -87,8 +17,8 @@ export async function GET(req: Request) {
     const search = searchParams.get("search");
     const vehicleType = searchParams.get("vehicleType");
 
-    // Always load stations from JSON file
-    let fileStations = loadAndFilterStations(city, search, vehicleType);
+    // Load from cached file data
+    let fileStations = loadAndFilterFileStations(city, search, vehicleType);
 
     // Also try to load DB stations and merge them in
     let dbStations: any[] = [];
@@ -111,7 +41,10 @@ export async function GET(req: Request) {
         filter.vehicleTypes = vehicleType;
       }
 
-      dbStations = await Station.find(filter).sort({ createdAt: -1 }).lean();
+      dbStations = await Station.find(filter)
+        .sort({ createdAt: -1 })
+        .select("-__v")
+        .lean();
     } catch {
       // DB connection failed, just use file stations
     }
@@ -121,7 +54,13 @@ export async function GET(req: Request) {
     const dedupedFileStations = fileStations.filter((s) => !dbNames.has(s.name));
     const stations = [...dbStations, ...dedupedFileStations];
 
-    return NextResponse.json({ stations }, { status: 200 });
+    const response = NextResponse.json({ stations }, { status: 200 });
+    // Cache for 30s, allow stale for 60s while revalidating
+    response.headers.set(
+      "Cache-Control",
+      "public, s-maxage=30, stale-while-revalidate=60"
+    );
+    return response;
   } catch (error) {
     console.error("Error fetching stations:", error);
     return NextResponse.json(
@@ -131,12 +70,12 @@ export async function GET(req: Request) {
   }
 }
 
-function loadAndFilterStations(
+function loadAndFilterFileStations(
   city: string | null,
   search: string | null,
   vehicleType: string | null
 ) {
-  let stations = loadStationsFromFile().filter((s) => s.isActive);
+  let stations = loadAllStationsFromFile().filter((s) => s.isActive);
 
   if (city) {
     const cityLower = city.toLowerCase();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   BarChart3,
@@ -18,19 +19,46 @@ import {
   Battery,
   Activity,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-} from "recharts";
 import { cn, formatPrice } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Spinner";
+
+// Dynamically import heavy chart components
+const RechartsBarChart = dynamic(
+  () => import("recharts").then((m) => ({ default: m.BarChart })),
+  { ssr: false }
+);
+const Bar = dynamic(
+  () => import("recharts").then((m) => ({ default: m.Bar })),
+  { ssr: false }
+);
+const XAxis = dynamic(
+  () => import("recharts").then((m) => ({ default: m.XAxis })),
+  { ssr: false }
+);
+const YAxis = dynamic(
+  () => import("recharts").then((m) => ({ default: m.YAxis })),
+  { ssr: false }
+);
+const CartesianGrid = dynamic(
+  () => import("recharts").then((m) => ({ default: m.CartesianGrid })),
+  { ssr: false }
+);
+const Tooltip = dynamic(
+  () => import("recharts").then((m) => ({ default: m.Tooltip })),
+  { ssr: false }
+);
+const ResponsiveContainer = dynamic(
+  () => import("recharts").then((m) => ({ default: m.ResponsiveContainer })),
+  { ssr: false }
+);
+const AreaChart = dynamic(
+  () => import("recharts").then((m) => ({ default: m.AreaChart })),
+  { ssr: false }
+);
+const Area = dynamic(
+  () => import("recharts").then((m) => ({ default: m.Area })),
+  { ssr: false }
+);
 
 interface AdminAnalytics {
   revenue: { total: number; currency: string; period: string };

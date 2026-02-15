@@ -14,6 +14,7 @@ import {
   Bath,
   Fuel,
   CircleDot,
+  Car,
 } from "lucide-react";
 import { cn, getConnectorLabel } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
@@ -45,12 +46,16 @@ interface StationCardProps {
   station: IStation;
   onToggleFavorite?: (stationId: string) => void;
   isFavorite?: boolean;
+  etaMinutes?: number | null;
+  etaDistanceKm?: number | null;
 }
 
 export function StationCard({
   station,
   onToggleFavorite,
   isFavorite = false,
+  etaMinutes,
+  etaDistanceKm,
 }: StationCardProps) {
   const [favorite, setFavorite] = useState(isFavorite);
 
@@ -108,6 +113,25 @@ export function StationCard({
             />
           </button>
         </div>
+
+        {/* ETA / Driving Time */}
+        {etaMinutes != null && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-md bg-blue-500/10 px-2 py-1">
+              <Car className="h-3.5 w-3.5 text-blue-400" />
+              <span className="text-xs font-medium text-blue-400">
+                {etaMinutes < 60
+                  ? `${etaMinutes} min`
+                  : `${Math.floor(etaMinutes / 60)}h ${etaMinutes % 60}m`}
+              </span>
+            </div>
+            {etaDistanceKm != null && (
+              <span className="text-xs text-muted-foreground">
+                {etaDistanceKm} km drive
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Connector Types */}
         <div className="mt-3 flex flex-wrap gap-1.5">

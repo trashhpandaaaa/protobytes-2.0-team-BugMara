@@ -24,6 +24,14 @@ import {
   formatPrice,
   getStatusColor,
 } from "@/lib/utils";
+import { ETADisplay } from "@/components/station/ETADisplay";
+import { LivePortStatus } from "@/components/station/LivePortStatus";
+import { NotifyMeButton } from "@/components/station/NotifyMeButton";
+import { QueueManager } from "@/components/station/QueueManager";
+import { loadStationFromFile } from "@/lib/stations";
+import dbConnect from "@/lib/db";
+import Station from "@/lib/models/Station";
+import Review from "@/lib/models/Review";
 import type { IStation, IReview } from "@/types";
 
 const amenityIcons: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -46,15 +54,17 @@ const amenityLabels: Record<string, string> = {
   petrol: "Petrol",
 };
 
+/** Direct data access — no self-referencing API call */
 async function getStation(id: string): Promise<IStation | null> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/stations/${id}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.station ?? data;
+    // File-based station
+    if (id.startsWith("station-")) {
+      return loadStationFromFile(id) as IStation | null;
+    }
+    // DB station
+    await dbConnect();
+    const station = await Station.findById(id).select("-__v").lean();
+    return station ? (JSON.parse(JSON.stringify(station)) as IStation) : null;
   } catch {
     return null;
   }
@@ -62,13 +72,13 @@ async function getStation(id: string): Promise<IStation | null> {
 
 async function getReviews(stationId: string): Promise<IReview[]> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/reviews?stationId=${stationId}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.reviews ?? data ?? [];
+    await dbConnect();
+    const reviews = await Review.find({ stationId })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .select("-__v")
+      .lean();
+    return JSON.parse(JSON.stringify(reviews)) as IReview[];
   } catch {
     return [];
   }
@@ -94,7 +104,10 @@ export default async function StationDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const station = await getStation(id);
+  const [station, reviews] = await Promise.all([
+    getStation(id),
+    getReviews(id),
+  ]);
 
   if (!station) {
     return (
@@ -117,8 +130,6 @@ export default async function StationDetailPage({
       </div>
     );
   }
-
-  const reviews = await getReviews(id);
 
   const availablePorts =
     station.chargingPorts?.filter((p) => p.status === "available").length ?? 0;
@@ -226,75 +237,11 @@ export default async function StationDetailPage({
               </div>
             )}
 
-            {/* Charging Ports */}
-            <div className="mt-4 sm:mt-6 rounded-xl border border-border/50 bg-card p-4 sm:p-6">
-              <h2 className="flex items-center gap-2 text-base sm:text-lg font-semibold text-card-foreground">
-                <Zap className="h-5 w-5 text-primary" />
-                Charging Ports
-                <span className="text-sm font-normal text-muted-foreground">
-                  ({availablePorts}/{totalPorts} available)
-                </span>
-              </h2>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {station.chargingPorts?.map((port) => {
-                  const config =
-                    statusConfig[port.status] || statusConfig.maintenance;
-                  return (
-                    <div
-                      key={port._id || port.portNumber}
-                      className="flex items-center justify-between rounded-lg border border-border/50 bg-surface p-4"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={cn(
-                            "flex h-10 w-10 items-center justify-center rounded-lg",
-                            port.status === "available"
-                              ? "bg-emerald-500/15"
-                              : port.status === "occupied"
-                                ? "bg-red-500/15"
-                                : port.status === "reserved"
-                                  ? "bg-amber-500/15"
-                                  : "bg-slate-500/15"
-                          )}
-                        >
-                          <Zap
-                            className={cn(
-                              "h-5 w-5",
-                              port.status === "available"
-                                ? "text-emerald-400"
-                                : port.status === "occupied"
-                                  ? "text-red-400"
-                                  : port.status === "reserved"
-                                    ? "text-amber-400"
-                                    : "text-slate-400"
-                            )}
-                          />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-card-foreground">
-                            Port {port.portNumber}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {getConnectorLabel(port.connectorType)}
-                            {port.powerOutput ? ` - ${port.powerOutput}` : ""}
-                            {port.chargerType ? ` (${port.chargerType})` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge variant={config.variant}>{config.label}</Badge>
-                    </div>
-                  );
-                })}
-
-                {(!station.chargingPorts ||
-                  station.chargingPorts.length === 0) && (
-                  <p className="col-span-full text-sm text-muted-foreground">
-                    No charging port information available.
-                  </p>
-                )}
-              </div>
-            </div>
+            {/* Charging Ports — Live SSE updates */}
+            <LivePortStatus
+              stationId={id}
+              initialPorts={station.chargingPorts || []}
+            />
 
             {/* Reviews Section */}
             <div className="mt-6 rounded-xl border border-border/50 bg-card p-6">
@@ -363,6 +310,14 @@ export default async function StationDetailPage({
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* ETA / Arrival Time */}
+            {station.location?.coordinates && (
+              <ETADisplay
+                stationLat={station.location.coordinates.lat}
+                stationLng={station.location.coordinates.lng}
+              />
+            )}
+
             {/* Pricing */}
             {station.pricing && (
               <div className="rounded-xl border border-border/50 bg-card p-6">
@@ -390,6 +345,18 @@ export default async function StationDetailPage({
             >
               Book Now
             </Link>
+
+            {/* Notify Me When Free */}
+            <NotifyMeButton
+              stationId={id}
+              hasAvailablePorts={availablePorts > 0}
+            />
+
+            {/* Virtual Queue */}
+            <QueueManager
+              stationId={id}
+              hasAvailablePorts={availablePorts > 0}
+            />
 
             {/* Amenities */}
             {station.amenities && station.amenities.length > 0 && (

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 const userLinks = [
   { href: "/", label: "Map View", icon: MapPin },
@@ -60,12 +61,19 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [role, setRole] = useState<string>("user");
+  const [role, setRole] = useState<string>(() => {
+    // Restore cached role from sessionStorage for instant display
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("__urja_role") || "user";
+    }
+    return "user";
+  });
   const { isSignedIn, user } = useUser();
 
   useEffect(() => {
     if (!isSignedIn) {
       setRole("user");
+      sessionStorage.removeItem("__urja_role");
       return;
     }
 
@@ -74,7 +82,9 @@ export function Sidebar() {
         const res = await fetch("/api/users/role");
         if (res.ok) {
           const data = await res.json();
-          setRole(data.role || "user");
+          const newRole = data.role || "user";
+          setRole(newRole);
+          sessionStorage.setItem("__urja_role", newRole);
         }
       } catch {
         setRole("user");
@@ -272,6 +282,7 @@ export function Sidebar() {
                 </p>
               </div>
             )}
+            <NotificationBell />
           </div>
         </SignedIn>
       </div>

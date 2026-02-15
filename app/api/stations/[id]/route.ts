@@ -21,11 +21,13 @@ export async function GET(
           { status: 404 }
         );
       }
-      return NextResponse.json({ station }, { status: 200 });
+      const response = NextResponse.json({ station }, { status: 200 });
+      response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
+      return response;
     }
 
     await dbConnect();
-    const station = await Station.findById(id).lean();
+    const station = await Station.findById(id).select("-__v").lean();
     if (!station) {
       return NextResponse.json(
         { error: "Station not found" },
@@ -33,7 +35,9 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ station }, { status: 200 });
+    const response = NextResponse.json({ station }, { status: 200 });
+    response.headers.set("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60");
+    return response;
   } catch (error) {
     console.error("Error fetching station:", error);
     return NextResponse.json(
